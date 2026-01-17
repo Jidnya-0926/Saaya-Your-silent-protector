@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
 import '../theme/app_theme.dart';
 import '../widgets/emergency_button.dart';
 import 'security_verification_screen.dart';
@@ -13,6 +14,51 @@ class HomeDashboard extends StatefulWidget {
 
 class _HomeDashboardState extends State<HomeDashboard> {
   final GlobalKey<ScaffoldState> scaffoldKey = GlobalKey<ScaffoldState>();
+
+  Future<void> _handleSOS(BuildContext context) async {
+    bool serviceEnabled;
+    LocationPermission permission;
+
+    serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Location services are disabled.')),
+        );
+      }
+      return;
+    }
+
+    permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+      if (permission == LocationPermission.denied) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Location permission is required for live tracking during emergencies.'),
+            ),
+          );
+        }
+        return;
+      }
+    }
+
+    if (permission == LocationPermission.deniedForever) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Location permissions are permanently denied, we cannot request permissions. Please enable in settings.'),
+          ),
+        );
+      }
+      return;
+    }
+
+    if (context.mounted) {
+      Navigator.pushNamed(context, '/emergency-active');
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -68,7 +114,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
             ),
             const Spacer(),
             EmergencyButton(
-              onTap: () => Navigator.pushNamed(context, '/emergency-active'),
+              onTap: () => _handleSOS(context),
             ),
             const SizedBox(height: 48),
             const Text(
@@ -92,7 +138,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
                           label: 'Share Location',
                           iconColor: const Color(0xFF2196F3),
                           bgColor: const Color(0xFFE3F2FD),
-                          onTap: () {},
+                          onTap: () => Navigator.pushNamed(context, '/live-location'),
                         ),
                       ),
                       const SizedBox(width: 16),
@@ -163,7 +209,6 @@ class _HomeDashboardState extends State<HomeDashboard> {
             const SizedBox(height: 40),
             const Divider(indent: 24, endIndent: 24),
             const SizedBox(height: 8),
-            // Options List
             _DrawerItem(
               icon: Icons.lock_outline_rounded,
               label: 'Change Secret Voice Code',
@@ -173,7 +218,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
                   context,
                   MaterialPageRoute(
                     builder: (context) => SecurityVerificationScreen(
-                      storedQuestion: 'Favourite Place', // Mocked stored values
+                      storedQuestion: 'Favourite Place',
                       storedAnswer: 'Home',
                       onVerified: () {
                         Navigator.pushReplacement(
@@ -217,7 +262,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
           ),
           TextButton(
             onPressed: () {
-              Navigator.pop(context); // Close dialog
+              Navigator.pop(context);
               Navigator.pushNamedAndRemoveUntil(
                 context,
                 '/auth',

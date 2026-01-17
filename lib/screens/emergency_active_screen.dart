@@ -1,9 +1,49 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart';
+import 'package:geolocator/geolocator.dart';
 import '../theme/app_theme.dart';
-import '../widgets/map_placeholder.dart';
 
-class EmergencyActiveScreen extends StatelessWidget {
+class EmergencyActiveScreen extends StatefulWidget {
   const EmergencyActiveScreen({super.key});
+
+  @override
+  State<EmergencyActiveScreen> createState() => _EmergencyActiveScreenState();
+}
+
+class _EmergencyActiveScreenState extends State<EmergencyActiveScreen> {
+  final MapController _mapController = MapController();
+  StreamSubscription<Position>? _positionStream;
+  LatLng? _currentLocation;
+  bool _isMapReady = false;
+
+  @override
+  void dispose() {
+    _positionStream?.cancel();
+    _mapController.dispose();
+    super.dispose();
+  }
+
+  void _startLiveTracking() {
+    // Requirements: Start location streaming only after map is ready
+    _positionStream = Geolocator.getPositionStream(
+      locationSettings: const LocationSettings(
+        accuracy: LocationAccuracy.high,
+        distanceFilter: 5,
+      ),
+    ).listen((Position position) {
+      if (mounted) {
+        setState(() {
+          _currentLocation = LatLng(position.latitude, position.longitude);
+          // Mandatory guard: Check _isMapReady before moving
+          if (_isMapReady) {
+            _mapController.move(_currentLocation!, 15.0);
+          }
+        });
+      }
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -12,7 +52,6 @@ class EmergencyActiveScreen extends StatelessWidget {
       body: SafeArea(
         child: Column(
           children: [
-            // Top Section: Icon and Alert Text
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 32.0, horizontal: 24.0),
               child: Column(
@@ -30,7 +69,9 @@ class EmergencyActiveScreen extends StatelessWidget {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    'Live GPS: 34.0522° N, 118.2437° W',
+                    _currentLocation != null
+                        ? 'Live GPS: ${_currentLocation!.latitude.toStringAsFixed(4)}° N, ${_currentLocation!.longitude.toStringAsFixed(4)}° W'
+                        : 'Connecting to GPS...',
                     style: TextStyle(
                       color: Colors.white.withOpacity(0.9),
                       fontSize: 14,
@@ -39,8 +80,6 @@ class EmergencyActiveScreen extends StatelessWidget {
                 ],
               ),
             ),
-            
-            // Main Content Area (White Container)
             Expanded(
               child: Container(
                 width: double.infinity,
@@ -61,11 +100,11 @@ class EmergencyActiveScreen extends StatelessWidget {
                     physics: const BouncingScrollPhysics(),
                     child: Column(
                       children: [
-                        const SizedBox(
+                        SizedBox(
                           height: 250,
                           child: Padding(
-                            padding: EdgeInsets.all(16.0),
-                            child: MapPlaceholderWidget(label: 'Live Tracking Active'),
+                            padding: const EdgeInsets.all(16.0),
+                            child: _buildOSMView(),
                           ),
                         ),
                         Padding(
@@ -76,7 +115,7 @@ class EmergencyActiveScreen extends StatelessWidget {
                               const Text(
                                 'Status Timeline',
                                 style: TextStyle(
-                                  fontWeight: FontWeight.bold, 
+                                  fontWeight: FontWeight.bold,
                                   fontSize: 18,
                                   color: Color(0xFF2D3238),
                                 ),
@@ -85,7 +124,7 @@ class EmergencyActiveScreen extends StatelessWidget {
                               _buildTimelineItem('Alert sent', true),
                               _buildTimelineItem('Contacts notified', true),
                               _buildTimelineItem('Authorities alerted', true),
-                              _buildTimelineItem('Live tracking active', false),
+                              _buildTimelineItem('Live tracking active', _currentLocation != null),
                               const SizedBox(height: 16),
                             ],
                           ),
@@ -99,8 +138,6 @@ class EmergencyActiveScreen extends StatelessWidget {
           ],
         ),
       ),
-      
-      // Fixed Bottom Action Bar
       bottomNavigationBar: SafeArea(
         child: Container(
           color: Colors.white,
@@ -128,6 +165,82 @@ class EmergencyActiveScreen extends StatelessWidget {
               ),
             ),
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildOSMView() {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.grey.shade100,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: Colors.grey.shade200),
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(24),
+        child: Stack(
+          children: [
+            FlutterMap(
+              mapController: _mapController,
+              options: MapOptions(
+                initialCenter: _currentLocation ?? const LatLng(0, 0),
+                initialZoom: 15.0,
+                onMapReady: () {
+                  // Requirement: Use onMapReady callback
+                  if (mounted) {
+                    setState(() {
+                      _isMapReady = true;
+                    });
+                    // Requirement: Start location streaming only after map is ready
+                    _startLiveTracking();
+                  }
+                },
+              ),
+              children: [
+                TileLayer(
+                  urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                  userAgentPackageName: 'com.saaya.app',
+                ),
+                if (_currentLocation != null)
+                  MarkerLayer(
+                    markers: [
+                      Marker(
+                        point: _currentLocation!,
+                        width: 60,
+                        height: 60,
+                        child: const _LocationMarker(),
+                      ),
+                    ],
+                  ),
+              ],
+            ),
+            Positioned(
+              top: 12,
+              left: 12,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.9),
+                  borderRadius: BorderRadius.circular(12),
+                  boxShadow: [
+                    BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 4),
+                  ],
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.gps_fixed, size: 14, color: Colors.blue),
+                    const SizedBox(width: 6),
+                    Text(
+                      _currentLocation != null ? 'Live Tracking Active' : 'Waiting for Map...',
+                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.blue),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -171,16 +284,76 @@ class EmergencyActiveScreen extends StatelessWidget {
           ),
           TextButton(
             onPressed: () {
-              Navigator.pop(context); // Close dialog
-              Navigator.pop(context); // Go back to Home
+              Navigator.pop(context);
+              Navigator.pop(context);
             },
             child: const Text(
-              'Yes, Cancel', 
+              'Yes, Cancel',
               style: TextStyle(color: AppTheme.primaryRed, fontWeight: FontWeight.bold),
             ),
           ),
         ],
       ),
+    );
+  }
+}
+
+class _LocationMarker extends StatefulWidget {
+  const _LocationMarker();
+
+  @override
+  State<_LocationMarker> createState() => _LocationMarkerState();
+}
+
+class _LocationMarkerState extends State<_LocationMarker> with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 2),
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, child) {
+        return Stack(
+          alignment: Alignment.center,
+          children: [
+            Container(
+              width: 60 * _controller.value,
+              height: 60 * _controller.value,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: Colors.blue.withOpacity(1 - _controller.value),
+              ),
+            ),
+            Container(
+              width: 16,
+              height: 16,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: Colors.blue,
+                border: Border.all(color: Colors.white, width: 2),
+                boxShadow: [
+                  BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 4),
+                ],
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 }
