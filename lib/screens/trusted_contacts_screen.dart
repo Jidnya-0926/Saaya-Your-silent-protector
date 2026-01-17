@@ -86,7 +86,10 @@ class _TrustedContactsScreenState extends State<TrustedContactsScreen> {
 
   Widget _buildAddContactButton() {
     return InkWell(
-      onTap: () {},
+      onTap: () {
+        Navigator.pushNamed(context, '/add-contact');
+      },
+      borderRadius: BorderRadius.circular(16),
       child: Container(
         height: 64,
         decoration: BoxDecoration(
