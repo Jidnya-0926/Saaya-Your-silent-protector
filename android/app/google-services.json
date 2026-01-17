@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "938475397395",
+    "project_id": "saaya-your-silent-protector",
+    "storage_bucket": "saaya-your-silent-protector.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:938475397395:android:af8a9dec150729af583ae6",
+        "android_client_info": {
+          "package_name": "com.example.technova"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "938475397395-evl4588gif2jcn21jkdcpfanvhisca4t.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.technova",
+            "certificate_hash": "e91fb264a06cbacafbd7fd1f5e55ddb215beac9c"
+          }
+        },
+        {
+          "client_id": "938475397395-nsvjs8360ibca90dmhk6to6bm054nu9s.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCH0DZ2GvgUhrltmmTr_z83wR9c2HTOeY4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "938475397395-nsvjs8360ibca90dmhk6to6bm054nu9s.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

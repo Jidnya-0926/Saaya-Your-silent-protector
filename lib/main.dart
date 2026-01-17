@@ -1,8 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_core/firebase_core.dart';
+
+import 'firebase_options.dart';
+
 import 'theme/app_theme.dart';
 import 'screens/splash_screen.dart';
 import 'screens/onboarding_screen.dart';
 import 'screens/auth_screen.dart';
+import 'screens/email_auth_screen.dart'; // ✅ ADD THIS
 import 'screens/profile_setup_screen.dart';
 import 'screens/trusted_contacts_screen.dart';
 import 'screens/voice_setup_screen.dart';
@@ -14,7 +19,15 @@ import 'screens/add_contact_screen.dart';
 import 'screens/emergency_contacts_screen.dart';
 import 'screens/live_location_screen.dart';
 
-void main() {
+void main() async {
+  // 🔥 REQUIRED for Firebase
+  WidgetsFlutterBinding.ensureInitialized();
+
+  // 🔥 Initialize Firebase (VERY IMPORTANT)
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
+
   runApp(const SaayaApp());
 }
 
@@ -32,6 +45,9 @@ class SaayaApp extends StatelessWidget {
         '/': (context) => const SplashScreen(),
         '/onboarding': (context) => const OnboardingScreen(),
         '/auth': (context) => const AuthScreen(),
+
+        '/email-auth': (context) => const EmailAuthScreen(), // ✅ ADD THIS
+
         '/profile-setup': (context) => const ProfileSetupScreen(),
         '/trusted-contacts': (context) => const TrustedContactsScreen(),
         '/add-contact': (context) => const AddContactScreen(),

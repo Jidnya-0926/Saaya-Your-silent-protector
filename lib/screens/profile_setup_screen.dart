@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+
 import '../theme/app_theme.dart';
 
 class ProfileSetupScreen extends StatefulWidget {
@@ -10,18 +13,79 @@ class ProfileSetupScreen extends StatefulWidget {
 
 class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
   final _formKey = GlobalKey<FormState>();
+
   String? _selectedQuestion;
+
+  // ✅ Controllers so we can save to Firebase
+  final _nameController = TextEditingController();
+  final _phoneController = TextEditingController();
   final _answerController = TextEditingController();
 
-  final List<String> _questions = [
+  bool _saving = false;
+
+  final List<String> _questions = const [
     'Favourite Place',
     'Favourite Person',
   ];
 
   @override
+  void initState() {
+    super.initState();
+
+    // ✅ Prefill if available (Google sign-in usually has name/photo)
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      _nameController.text = user.displayName ?? '';
+      _phoneController.text = user.phoneNumber ?? '';
+    }
+  }
+
+  @override
   void dispose() {
+    _nameController.dispose();
+    _phoneController.dispose();
     _answerController.dispose();
     super.dispose();
+  }
+
+  Future<void> _saveProfile() async {
+    if (!_formKey.currentState!.validate()) return;
+
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('You are not logged in')),
+      );
+      return;
+    }
+
+    setState(() => _saving = true);
+
+    try {
+      await FirebaseFirestore.instance.collection('users').doc(user.uid).set(
+        {
+          // ✅ Use same field names like your Firestore screenshot
+          'name': _nameController.text.trim(),
+          'Phone': _phoneController.text.trim(), // keeping "Phone" exactly
+          'photoUrl': user.photoURL ?? '',
+          'securityQuestion': _selectedQuestion ?? '',
+          'securityAnswerHash': _answerController.text.trim(), // simple for now
+          'updatedAt': FieldValue.serverTimestamp(),
+          'createdAt': FieldValue.serverTimestamp(),
+        },
+        SetOptions(merge: true),
+      );
+
+      if (!mounted) return;
+      Navigator.pushReplacementNamed(context, '/trusted-contacts');
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to save profile: $e')),
+      );
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
   }
 
   @override
@@ -64,12 +128,26 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
                 ),
               ),
               const SizedBox(height: 40),
-              _buildTextField('Full Name', 'Jane Doe'),
+
+              // ✅ Full Name (with controller)
+              _buildTextField(
+                label: 'Full Name',
+                hint: 'Jane Doe',
+                controller: _nameController,
+              ),
               const SizedBox(height: 24),
-              _buildTextField('Phone Number', '+1 (555) 000-0000', icon: Icons.phone_android),
+
+              // ✅ Phone Number (with controller)
+              _buildTextField(
+                label: 'Phone Number',
+                hint: '+91XXXXXXXXXX',
+                icon: Icons.phone_android,
+                controller: _phoneController,
+                keyboardType: TextInputType.phone,
+              ),
+
               const SizedBox(height: 32),
-              
-              // Personal Security Question Section
+
               const Text(
                 'Select a Security Question',
                 style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
@@ -96,16 +174,17 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
                 onChanged: (value) {
                   setState(() {
                     _selectedQuestion = value;
+                    _answerController.clear();
                   });
                 },
                 validator: (value) => value == null ? 'Please select a question' : null,
               ),
-              
+
               if (_selectedQuestion != null) ...[
                 const SizedBox(height: 24),
                 Text(
-                  _selectedQuestion == 'Favourite Place' 
-                      ? 'Enter your favourite place' 
+                  _selectedQuestion == 'Favourite Place'
+                      ? 'Enter your favourite place'
                       : 'Enter your favourite person',
                   style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
                 ),
@@ -124,23 +203,34 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
                     ),
                   ),
                   validator: (value) {
-                    if (value == null || value.isEmpty) {
+                    if (_selectedQuestion != null &&
+                        (value == null || value.trim().isEmpty)) {
                       return 'Please enter your answer';
                     }
                     return null;
                   },
                 ),
               ],
-              
+
               const SizedBox(height: 48),
-              ElevatedButton(
-                onPressed: () {
-                  if (_formKey.currentState!.validate()) {
-                    // Logic to save profile data would go here
-                    Navigator.pushNamed(context, '/trusted-contacts');
-                  }
-                },
-                child: const Text('Save & Continue'),
+
+              // ✅ Save button (writes to Firestore)
+              SizedBox(
+                width: double.infinity,
+                height: 52,
+                child: ElevatedButton(
+                  onPressed: _saving ? null : _saveProfile,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppTheme.primaryRed,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                  ),
+                  child: Text(
+                    _saving ? 'Saving...' : 'Save & Continue',
+                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                  ),
+                ),
               ),
             ],
           ),
@@ -149,7 +239,13 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
     );
   }
 
-  Widget _buildTextField(String label, String hint, {IconData? icon}) {
+  Widget _buildTextField({
+    required String label,
+    required String hint,
+    required TextEditingController controller,
+    IconData? icon,
+    TextInputType? keyboardType,
+  }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -159,6 +255,8 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
         ),
         const SizedBox(height: 8),
         TextFormField(
+          controller: controller,
+          keyboardType: keyboardType,
           decoration: InputDecoration(
             hintText: hint,
             prefixIcon: icon != null ? Icon(icon, color: Colors.grey) : null,
@@ -170,7 +268,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
             ),
           ),
           validator: (value) {
-            if (value == null || value.isEmpty) {
+            if (value == null || value.trim().isEmpty) {
               return 'This field is required';
             }
             return null;
