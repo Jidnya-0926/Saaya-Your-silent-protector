@@ -30,26 +30,27 @@ class _AddContactScreenState extends State<AddContactScreen> {
     super.dispose();
   }
 
-  User get _user {
-    final u = FirebaseAuth.instance.currentUser;
-    if (u == null) {
-      throw Exception('User not logged in');
-    }
-    return u;
-  }
+  User? get _user => FirebaseAuth.instance.currentUser;
 
-  /// ✅ IMPORTANT: This MUST match your rules + TrustedContactsScreen
-  /// users/{uid}/trusted_contacts/{contactId}
-  CollectionReference<Map<String, dynamic>> _contactsRef() {
+  CollectionReference<Map<String, dynamic>> _contactsRef(String uid) {
     return FirebaseFirestore.instance
         .collection('users')
-        .doc(_user.uid)
-        .collection('trusted_contacts');
+        .doc(uid)
+        .collection('trusted_contacts'); // ✅ SAME EVERYWHERE
   }
 
   Future<void> _saveContact() async {
     if (!_formKey.currentState!.validate()) return;
     if (_saving) return;
+
+    final user = _user;
+    if (user == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please sign in first')),
+      );
+      return;
+    }
 
     setState(() => _saving = true);
 
@@ -60,21 +61,17 @@ class _AddContactScreenState extends State<AddContactScreen> {
           ? 'Contact'
           : _relationController.text.trim();
 
-      // ✅ Prevent more than 5 contacts
-      final currentCountSnap = await _contactsRef().count().get();
-      final currentCount = currentCountSnap.count ?? 0;
-
-      if (currentCount >= _maxContacts) {
+      // ✅ Limit to 5 contacts (simple + reliable)
+      final existing = await _contactsRef(user.uid).get();
+      if (existing.size >= _maxContacts) {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('You can add maximum 5 trusted contacts.'),
-          ),
+          const SnackBar(content: Text('You can add maximum 5 trusted contacts.')),
         );
         return;
       }
 
-      await _contactsRef().add({
+      await _contactsRef(user.uid).add({
         'name': name,
         'phone': phone,
         'relation': relation,
@@ -104,10 +101,9 @@ class _AddContactScreenState extends State<AddContactScreen> {
     }
   }
 
-  Future<void> _deleteContact(String docId) async {
+  Future<void> _deleteContact(String uid, String docId) async {
     try {
-      await _contactsRef().doc(docId).delete();
-
+      await _contactsRef(uid).doc(docId).delete();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Contact deleted')),
@@ -122,12 +118,15 @@ class _AddContactScreenState extends State<AddContactScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // If user is logged out somehow, show message
-    if (FirebaseAuth.instance.currentUser == null) {
+    final user = _user;
+
+    if (user == null) {
       return const Scaffold(
         body: Center(child: Text('Please sign in first')),
       );
     }
+
+    final uid = user.uid;
 
     return Scaffold(
       appBar: AppBar(
@@ -135,7 +134,7 @@ class _AddContactScreenState extends State<AddContactScreen> {
         centerTitle: true,
       ),
       body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-        stream: _contactsRef().orderBy('createdAt', descending: false).snapshots(),
+        stream: _contactsRef(uid).orderBy('createdAt', descending: false).snapshots(),
         builder: (context, snapshot) {
           if (snapshot.hasError) {
             return Center(child: Text('Error: ${snapshot.error}'));
@@ -150,7 +149,7 @@ class _AddContactScreenState extends State<AddContactScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Section A: Existing Trusted Contacts
+                // Existing contacts
                 Padding(
                   padding: const EdgeInsets.fromLTRB(24, 24, 24, 8),
                   child: Row(
@@ -191,27 +190,21 @@ class _AddContactScreenState extends State<AddContactScreen> {
                         final data = doc.data();
                         final name = (data['name'] ?? '').toString();
                         final phone = (data['phone'] ?? '').toString();
-                        final relation =
-                            (data['relation'] ?? 'Contact').toString();
+                        final relation = (data['relation'] ?? 'Contact').toString();
 
                         return ContactCard(
                           name: name.isEmpty ? 'Unnamed' : name,
                           relation: relation.isEmpty ? 'Contact' : relation,
                           phone: phone,
-                          onDelete: () => _deleteContact(doc.id),
+                          onDelete: () => _deleteContact(uid, doc.id),
                         );
                       }).toList(),
                     ),
                   ),
 
-                const Divider(
-                  height: 48,
-                  thickness: 1,
-                  indent: 24,
-                  endIndent: 24,
-                ),
+                const Divider(height: 48, thickness: 1, indent: 24, endIndent: 24),
 
-                // Section B: Add New Contact Form
+                // Add contact form
                 Padding(
                   padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
                   child: Form(
@@ -234,29 +227,17 @@ class _AddContactScreenState extends State<AddContactScreen> {
                         ),
                         const SizedBox(height: 32),
 
-                        _buildTextField(
-                          'Contact Name',
-                          'Enter name',
-                          Icons.person_outline,
-                          _nameController,
-                        ),
+                        _buildTextField('Contact Name', 'Enter name',
+                            Icons.person_outline, _nameController),
                         const SizedBox(height: 24),
 
-                        _buildTextField(
-                          'Phone Number',
-                          'Enter phone number',
-                          Icons.phone_android_outlined,
-                          _phoneController,
-                          keyboardType: TextInputType.phone,
-                        ),
+                        _buildTextField('Phone Number', 'Enter phone number',
+                            Icons.phone_android_outlined, _phoneController,
+                            keyboardType: TextInputType.phone),
                         const SizedBox(height: 24),
 
-                        _buildTextField(
-                          'Relation (Optional)',
-                          'e.g. Brother, Friend',
-                          Icons.people_outline,
-                          _relationController,
-                        ),
+                        _buildTextField('Relation (Optional)', 'e.g. Brother, Friend',
+                            Icons.people_outline, _relationController),
                         const SizedBox(height: 40),
 
                         ElevatedButton(
@@ -312,10 +293,7 @@ class _AddContactScreenState extends State<AddContactScreen> {
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(16),
-              borderSide: const BorderSide(
-                color: AppTheme.primaryRed,
-                width: 1.5,
-              ),
+              borderSide: const BorderSide(color: AppTheme.primaryRed, width: 1.5),
             ),
           ),
           validator: (value) {

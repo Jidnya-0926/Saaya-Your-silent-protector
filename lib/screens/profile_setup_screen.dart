@@ -16,7 +16,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
 
   String? _selectedQuestion;
 
-  // ✅ Controllers so we can save to Firebase
+  // ✅ Controllers
   final _nameController = TextEditingController();
   final _phoneController = TextEditingController();
   final _answerController = TextEditingController();
@@ -32,7 +32,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
   void initState() {
     super.initState();
 
-    // ✅ Prefill if available (Google sign-in usually has name/photo)
+    // ✅ Prefill if available
     final user = FirebaseAuth.instance.currentUser;
     if (user != null) {
       _nameController.text = user.displayName ?? '';
@@ -62,19 +62,31 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
     setState(() => _saving = true);
 
     try {
-      await FirebaseFirestore.instance.collection('users').doc(user.uid).set(
-        {
-          // ✅ Use same field names like your Firestore screenshot
-          'name': _nameController.text.trim(),
-          'Phone': _phoneController.text.trim(), // keeping "Phone" exactly
-          'photoUrl': user.photoURL ?? '',
-          'securityQuestion': _selectedQuestion ?? '',
-          'securityAnswerHash': _answerController.text.trim(), // simple for now
-          'updatedAt': FieldValue.serverTimestamp(),
-          'createdAt': FieldValue.serverTimestamp(),
-        },
-        SetOptions(merge: true),
-      );
+      final data = <String, dynamic>{
+        // ✅ Keep consistent field names (lowercase phone)
+        'name': _nameController.text.trim(),
+        'phone': _phoneController.text.trim(), // ✅ FIX: was "Phone"
+        'photoUrl': user.photoURL ?? '',
+        'securityQuestion': (_selectedQuestion ?? '').trim(),
+
+        // ✅ FIX: store plain answer so verification can work
+        // (later you can hash it if you want)
+        'securityAnswer': _answerController.text.trim(), // ✅ NEW
+
+        // Optional: keep hash field too (for future)
+        'securityAnswerHash': _answerController.text
+            .trim(), // you can change this to a real hash later
+
+        'updatedAt': FieldValue.serverTimestamp(),
+
+        // ✅ Only set createdAt if document is new
+        'createdAt': FieldValue.serverTimestamp(),
+      };
+
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .set(data, SetOptions(merge: true));
 
       if (!mounted) return;
       Navigator.pushReplacementNamed(context, '/trusted-contacts');
@@ -113,7 +125,8 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
                     CircleAvatar(
                       radius: 60,
                       backgroundColor: Colors.grey.shade100,
-                      child: const Icon(Icons.person, size: 60, color: Colors.grey),
+                      child:
+                          const Icon(Icons.person, size: 60, color: Colors.grey),
                     ),
                     Positioned(
                       bottom: 0,
@@ -121,7 +134,8 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
                       child: CircleAvatar(
                         radius: 18,
                         backgroundColor: AppTheme.primaryRed,
-                        child: const Icon(Icons.camera_alt, size: 18, color: Colors.white),
+                        child: const Icon(Icons.camera_alt,
+                            size: 18, color: Colors.white),
                       ),
                     ),
                   ],
@@ -129,7 +143,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
               ),
               const SizedBox(height: 40),
 
-              // ✅ Full Name (with controller)
+              // ✅ Full Name
               _buildTextField(
                 label: 'Full Name',
                 hint: 'Jane Doe',
@@ -137,7 +151,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
               ),
               const SizedBox(height: 24),
 
-              // ✅ Phone Number (with controller)
+              // ✅ Phone Number
               _buildTextField(
                 label: 'Phone Number',
                 hint: '+91XXXXXXXXXX',
@@ -162,7 +176,8 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
                     borderRadius: BorderRadius.circular(12),
                     borderSide: BorderSide.none,
                   ),
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: 16),
                 ),
                 hint: const Text('Choose a question'),
                 items: _questions.map((String question) {
@@ -177,7 +192,8 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
                     _answerController.clear();
                   });
                 },
-                validator: (value) => value == null ? 'Please select a question' : null,
+                validator: (value) =>
+                    value == null ? 'Please select a question' : null,
               ),
 
               if (_selectedQuestion != null) ...[
@@ -186,7 +202,8 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
                   _selectedQuestion == 'Favourite Place'
                       ? 'Enter your favourite place'
                       : 'Enter your favourite person',
-                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                  style: const TextStyle(
+                      fontWeight: FontWeight.bold, fontSize: 14),
                 ),
                 const SizedBox(height: 8),
                 TextFormField(
@@ -214,7 +231,6 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
 
               const SizedBox(height: 48),
 
-              // ✅ Save button (writes to Firestore)
               SizedBox(
                 width: double.infinity,
                 height: 52,
@@ -228,7 +244,8 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
                   ),
                   child: Text(
                     _saving ? 'Saving...' : 'Save & Continue',
-                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                    style: const TextStyle(
+                        fontSize: 16, fontWeight: FontWeight.bold),
                   ),
                 ),
               ),

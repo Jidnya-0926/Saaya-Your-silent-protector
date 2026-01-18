@@ -1,5 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:google_sign_in/google_sign_in.dart';
+
 import '../theme/app_theme.dart';
 import '../widgets/emergency_button.dart';
 import 'security_verification_screen.dart';
@@ -14,6 +18,16 @@ class HomeDashboard extends StatefulWidget {
 
 class _HomeDashboardState extends State<HomeDashboard> {
   final GlobalKey<ScaffoldState> scaffoldKey = GlobalKey<ScaffoldState>();
+
+  User? get _user => FirebaseAuth.instance.currentUser;
+
+  DocumentReference<Map<String, dynamic>> _userDocRef(String uid) {
+    return FirebaseFirestore.instance.collection('users').doc(uid);
+  }
+
+  Stream<DocumentSnapshot<Map<String, dynamic>>> _userDocStream(String uid) {
+    return _userDocRef(uid).snapshots();
+  }
 
   Future<void> _handleSOS(BuildContext context) async {
     bool serviceEnabled;
@@ -36,7 +50,9 @@ class _HomeDashboardState extends State<HomeDashboard> {
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('Location permission is required for live tracking during emergencies.'),
+              content: Text(
+                'Location permission is required for live tracking during emergencies.',
+              ),
             ),
           );
         }
@@ -48,7 +64,9 @@ class _HomeDashboardState extends State<HomeDashboard> {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Location permissions are permanently denied, we cannot request permissions. Please enable in settings.'),
+            content: Text(
+              'Location permissions are permanently denied. Please enable in settings.',
+            ),
           ),
         );
       }
@@ -60,11 +78,118 @@ class _HomeDashboardState extends State<HomeDashboard> {
     }
   }
 
+  Future<void> _openSecurityVerification(BuildContext context) async {
+    final user = _user;
+    if (user == null) {
+      if (!mounted) return;
+      Navigator.pushNamedAndRemoveUntil(context, '/auth', (r) => false);
+      return;
+    }
+
+    try {
+      final snap = await _userDocRef(user.uid).get();
+      final data = snap.data() ?? {};
+
+      final storedQuestion =
+          (data['securityQuestion'] ?? data['selectedQuestion'] ?? data['question'] ?? '')
+              .toString()
+              .trim();
+
+      final storedAnswer =
+          (data['securityAnswer'] ?? data['answer'] ?? '')
+              .toString()
+              .trim();
+
+      if (storedQuestion.isEmpty || storedAnswer.isEmpty) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Security question/answer not found. Please complete profile setup again.',
+            ),
+          ),
+        );
+        return;
+      }
+
+      if (!mounted) return;
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => SecurityVerificationScreen(
+            storedQuestion: storedQuestion,
+            storedAnswer: storedAnswer,
+            onVerified: () {
+              Navigator.pushReplacement(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const ChangeVoiceCodeScreen(),
+                ),
+              );
+            },
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to load security info: $e')),
+      );
+    }
+  }
+
+  Future<void> _logout(BuildContext context) async {
+    try {
+      // Google sign out (safe even if user logged in with email)
+      await GoogleSignIn().signOut();
+    } catch (_) {}
+
+    await FirebaseAuth.instance.signOut();
+
+    if (!context.mounted) return;
+    Navigator.pushNamedAndRemoveUntil(context, '/auth', (route) => false);
+  }
+
+  void _showLogoutDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Log Out'),
+        content: const Text('Are you sure you want to log out of Saaya?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              _logout(context);
+            },
+            child: const Text(
+              'Log Out',
+              style: TextStyle(color: AppTheme.primaryRed),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final user = _user;
+
+    // If somehow user is not signed in
+    if (user == null) {
+      return const Scaffold(
+        body: Center(child: Text('Please sign in first')),
+      );
+    }
+
     return Scaffold(
       key: scaffoldKey,
-      endDrawer: _buildProfileDrawer(context),
+      endDrawer: _buildProfileDrawer(context, user.uid),
       body: SafeArea(
         child: Column(
           children: [
@@ -166,7 +291,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
     );
   }
 
-  Widget _buildProfileDrawer(BuildContext context) {
+  Widget _buildProfileDrawer(BuildContext context, String uid) {
     return Drawer(
       width: MediaQuery.of(context).size.width * 0.85,
       shape: const RoundedRectangleBorder(
@@ -176,105 +301,76 @@ class _HomeDashboardState extends State<HomeDashboard> {
         ),
       ),
       child: SafeArea(
-        child: Column(
-          children: [
-            const SizedBox(height: 40),
-            const Center(
-              child: Column(
-                children: [
-                  CircleAvatar(
-                    radius: 50,
-                    backgroundColor: Color(0xFFF1F4F8),
-                    child: Icon(Icons.person, size: 50, color: Colors.grey),
-                  ),
-                  SizedBox(height: 16),
-                  Text(
-                    'John Doe',
-                    style: TextStyle(
-                      fontSize: 24,
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFF2D3238),
-                    ),
-                  ),
-                  Text(
-                    'Member',
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: Colors.grey,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 40),
-            const Divider(indent: 24, endIndent: 24),
-            const SizedBox(height: 8),
-            _DrawerItem(
-              icon: Icons.lock_outline_rounded,
-              label: 'Change Secret Voice Code',
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => SecurityVerificationScreen(
-                      storedQuestion: 'Favourite Place',
-                      storedAnswer: 'Home',
-                      onVerified: () {
-                        Navigator.pushReplacement(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => const ChangeVoiceCodeScreen(),
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                );
-              },
-            ),
-            const Spacer(),
-            const Divider(indent: 24, endIndent: 24),
-            _DrawerItem(
-              icon: Icons.logout_rounded,
-              label: 'Log Out',
-              textColor: AppTheme.primaryRed,
-              iconColor: AppTheme.primaryRed,
-              onTap: () => _showLogoutDialog(context),
-            ),
-            const SizedBox(height: 20),
-          ],
-        ),
-      ),
-    );
-  }
+        child: StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+          stream: _userDocStream(uid),
+          builder: (context, snapshot) {
+            final data = snapshot.data?.data() ?? {};
 
-  void _showLogoutDialog(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Log Out'),
-        content: const Text('Are you sure you want to log out of Saaya?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () {
-              Navigator.pop(context);
-              Navigator.pushNamedAndRemoveUntil(
-                context,
-                '/auth',
-                (route) => false,
-              );
-            },
-            child: const Text(
-              'Log Out',
-              style: TextStyle(color: AppTheme.primaryRed),
-            ),
-          ),
-        ],
+            final name = (data['name'] ?? '').toString().trim();
+            final phone = (data['phone'] ?? '').toString().trim();
+            final email = (_user?.email ?? '').toString().trim();
+
+            final displayName = name.isNotEmpty ? name : 'User';
+            // ✅ show phone instead of "Member"
+            final subtitle = phone.isNotEmpty ? phone : (email.isNotEmpty ? email : ' ');
+
+            return Column(
+              children: [
+                const SizedBox(height: 40),
+                Center(
+                  child: Column(
+                    children: [
+                      const CircleAvatar(
+                        radius: 50,
+                        backgroundColor: Color(0xFFF1F4F8),
+                        child: Icon(Icons.person, size: 50, color: Colors.grey),
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        displayName,
+                        style: const TextStyle(
+                          fontSize: 24,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF2D3238),
+                        ),
+                      ),
+                      Text(
+                        subtitle,
+                        style: const TextStyle(
+                          fontSize: 14,
+                          color: Colors.grey,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 40),
+                const Divider(indent: 24, endIndent: 24),
+                const SizedBox(height: 8),
+
+                _DrawerItem(
+                  icon: Icons.lock_outline_rounded,
+                  label: 'Change Secret Voice Code',
+                  onTap: () {
+                    Navigator.pop(context);
+                    _openSecurityVerification(context);
+                  },
+                ),
+
+                const Spacer(),
+                const Divider(indent: 24, endIndent: 24),
+                _DrawerItem(
+                  icon: Icons.logout_rounded,
+                  label: 'Log Out',
+                  textColor: AppTheme.primaryRed,
+                  iconColor: AppTheme.primaryRed,
+                  onTap: () => _showLogoutDialog(context),
+                ),
+                const SizedBox(height: 20),
+              ],
+            );
+          },
+        ),
       ),
     );
   }
