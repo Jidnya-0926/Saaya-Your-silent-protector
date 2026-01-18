@@ -4,6 +4,7 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:geolocator/geolocator.dart';
 import '../theme/app_theme.dart';
+import '../services/sms_service.dart';
 
 class EmergencyActiveScreen extends StatefulWidget {
   const EmergencyActiveScreen({super.key});
@@ -284,6 +285,8 @@ class _EmergencyActiveScreenState extends State<EmergencyActiveScreen> {
           ),
           TextButton(
             onPressed: () {
+              // Reset the SOS flag so it can be sent again in the next emergency
+              SMSService().resetSOSFlag();
               Navigator.pop(context);
               Navigator.pop(context);
             },

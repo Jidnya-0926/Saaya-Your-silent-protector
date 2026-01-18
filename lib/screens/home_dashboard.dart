@@ -8,6 +8,7 @@ import '../theme/app_theme.dart';
 import '../widgets/emergency_button.dart';
 import 'security_verification_screen.dart';
 import 'change_voice_code_screen.dart';
+import '../services/sms_service.dart';
 
 class HomeDashboard extends StatefulWidget {
   const HomeDashboard({super.key});
@@ -30,6 +31,9 @@ class _HomeDashboardState extends State<HomeDashboard> {
   }
 
   Future<void> _handleSOS(BuildContext context) async {
+    // Trigger SMS SOS Logic (One-time protection handled inside service)
+    SMSService().sendSOS();
+
     bool serviceEnabled;
     LocationPermission permission;
 
